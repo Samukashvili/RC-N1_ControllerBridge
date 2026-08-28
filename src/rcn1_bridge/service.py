@@ -9,7 +9,7 @@ from enum import Enum
 
 from .config import BridgeConfig
 from .mapping import ControlMapper
-from .model import MappedControls, RawControls
+from .model import NEUTRAL_PHYSICAL, MappedControls, PhysicalControls, RawControls
 from .output import GamepadOutput
 from .ports import PortCandidate, list_candidates
 from .transport import Rcn1Transport, TransportError, TransportStats, probe_port
@@ -33,6 +33,7 @@ class ServiceSnapshot:
     port: str | None = None
     raw: RawControls | None = None
     mapped: MappedControls | None = None
+    physical: PhysicalControls = NEUTRAL_PHYSICAL
     stats: TransportStats | None = None
     output_reports: int = 0
     connected_at: float | None = None
@@ -165,6 +166,10 @@ class BridgeService:
             transport.enable_simulator_mode()
             connected_at = time.time()
             consecutive_timeouts = 0
+            button_timeouts = 0
+            controls_since_buttons = self.config.button_poll_interval
+            physical = NEUTRAL_PHYSICAL
+            buttons_supported = True
             while not self._stop.is_set():
                 raw = transport.poll()
                 if raw is None:
@@ -177,7 +182,19 @@ class BridgeService:
                         raise TransportError("controller stopped answering validated polls")
                     continue
                 consecutive_timeouts = 0
-                mapped = self.mapper.map(raw)
+                controls_since_buttons += 1
+                if buttons_supported and controls_since_buttons >= self.config.button_poll_interval:
+                    controls_since_buttons = 0
+                    new_physical = transport.poll_buttons()
+                    if new_physical is None:
+                        button_timeouts += 1
+                        if button_timeouts >= 3:
+                            buttons_supported = False
+                            physical = NEUTRAL_PHYSICAL
+                    else:
+                        button_timeouts = 0
+                        physical = new_physical
+                mapped = self.mapper.map(raw, physical)
                 should_report = not (
                     self.config.suppress_duplicate_reports and mapped == self._last_report
                 )
@@ -191,6 +208,7 @@ class BridgeService:
                     port=candidate.device,
                     raw=raw,
                     mapped=mapped,
+                    physical=physical,
                     stats=replace(transport.stats),
                     output_reports=self._output_reports,
                     connected_at=connected_at,

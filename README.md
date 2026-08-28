@@ -18,7 +18,9 @@ such as Liftoff, Uncrashed, DRL, DCL, Zephyr, and similar simulators.
   Known `For Protocol` interfaces rank first, DJI USB identity is only a hint,
   changed-name devices can be protocol-probed, and `For Debug` is excluded.
 - Inputs are clamped and support calibration, asymmetric ranges, dead zones,
-  expo, per-axis inversion, optional smoothing, and camera-wheel buttons.
+  expo, per-axis inversion, optional smoothing, and configurable button output.
+- Fn, record, photo/shutter, return-to-home, the Cine/Normal/Sport switch, and
+  both camera-wheel directions can each be mapped to an Xbox button or disabled.
 - Dependencies are small and pinned. There is no telemetry, networking,
   persistence service, shell execution, or background updater.
 - A diagnostics mode can validate the controller without creating a virtual pad.
@@ -52,6 +54,8 @@ Start the desktop app:
 ```powershell
 .\scripts\run.ps1
 ```
+
+After setup, you can also double-click `run.bat` in the project folder.
 
 The first setup may display the ViGEmBus installer. Complete it before pressing
 **Start bridge**.
@@ -89,8 +93,18 @@ candidates. Unknown serial devices are never probed unless you explicitly add
 3. Open the simulator's controller settings.
 4. Select the Xbox 360 controller and run the simulator's axis calibration.
 5. Bind physical left horizontal/vertical and right horizontal/vertical as the
-   simulator requests. The default profile inverts both vertical XInput axes to
-   match common gamepad conventions.
+   simulator requests. If a direction is reversed, open **Control mappings** and
+   toggle that axis's **Invert** option.
+
+All axes now use their direct direction by default. Older version-1 settings are
+migrated away from the original inverted vertical defaults. Axis inversion stays
+individually configurable because simulators disagree about axis orientation.
+
+Camera-wheel and physical-button outputs default to **Disabled**, preventing an
+unwanted menu action before you intentionally bind them. Open **Control
+mappings** to assign any input to A/B/X/Y, shoulder buttons, stick clicks,
+Start/Back, or a D-pad direction. The same Xbox button may be assigned to more
+than one RC input safely.
 
 The RC-N1 throttle stick springs to center, unlike a typical FPV radio. Most
 simulators can still calibrate it, but the feel will differ from a non-centering
@@ -111,7 +125,9 @@ Useful settings include:
 - `probe_unknown_ports`: permit protocol probing of unrecognized serial devices
 - `smoothing`: `0.0` for minimum latency; modest values such as `0.1` reduce noise
 - `suppress_duplicate_reports`: avoids redundant XInput reports while sticks are still
-- `camera_button_threshold`: wheel travel required before A/B is pressed
+- `camera_button_threshold`: wheel travel required before its mapped button is pressed
+- `button_poll_interval`: number of stick packets between extended-button reads
+- `*_button` settings: Xbox binding name, or `"NONE"` to disable that input
 - per-axis `minimum`, `center`, `maximum`, `invert`, `deadzone`, and `expo`
 
 ## Safety and privacy
@@ -119,7 +135,9 @@ Useful settings include:
 RC N1 Bridge talks only to the selected local serial port and the local virtual
 gamepad driver. It performs no network requests. On a timeout or disconnect it
 immediately sends a neutral virtual-controller report, retries after a bounded
-delay, and releases camera-wheel buttons during shutdown.
+delay, and releases all mapped buttons during shutdown. Firmware that does not
+answer the optional extended-button command automatically falls back to axes-only
+operation for that connection.
 
 The project is unofficial. Use it at your own risk, close it before running DJI
 Assistant, and never use it as part of real-aircraft control.

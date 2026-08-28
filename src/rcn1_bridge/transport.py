@@ -6,13 +6,17 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 
-from .model import RawControls
+from .model import PhysicalControls, RawControls
 from .protocol import (
+    DumlFrame,
     FrameDecoder,
+    build_button_poll_command,
     build_poll_command,
     build_simulator_mode_command,
+    is_button_response,
     is_channel_response,
     parse_controls,
+    parse_physical_controls,
 )
 
 
@@ -25,6 +29,9 @@ class TransportStats:
     polls_sent: int = 0
     frames_received: int = 0
     controls_received: int = 0
+    button_polls_sent: int = 0
+    buttons_received: int = 0
+    button_timeouts: int = 0
     response_timeouts: int = 0
     invalid_frames: int = 0
     discarded_bytes: int = 0
@@ -110,14 +117,18 @@ class Rcn1Transport:
     def enable_simulator_mode(self) -> None:
         self._write(build_simulator_mode_command(self._next_sequence()))
 
-    def poll(self) -> RawControls | None:
-        """Send one poll, then wait for one validated channel response."""
+    def _request(
+        self,
+        command: bytes,
+        matches: Callable[[DumlFrame], bool],
+        *,
+        timeout: float | None = None,
+    ) -> tuple[DumlFrame | None, float]:
         if self._serial is None:
             raise TransportError("serial port is not open")
         started = time.perf_counter()
-        self._write(build_poll_command(self._next_sequence()))
-        self.stats.polls_sent += 1
-        deadline = started + self.response_timeout
+        self._write(command)
+        deadline = started + (self.response_timeout if timeout is None else timeout)
         try:
             while time.perf_counter() < deadline:
                 # Asking pyserial for a large fixed block waits for that entire
@@ -132,20 +143,42 @@ class Rcn1Transport:
                 self.stats.discarded_bytes = self._decoder.discarded_bytes
                 for frame in frames:
                     self.stats.frames_received += 1
-                    if not is_channel_response(frame):
-                        continue
-                    controls = parse_controls(frame)
-                    elapsed_ms = (time.perf_counter() - started) * 1000.0
-                    self.stats.controls_received += 1
-                    self.stats.last_response_ms = elapsed_ms
-                    self._response_time_total += elapsed_ms
-                    self.stats.average_response_ms = (
-                        self._response_time_total / self.stats.controls_received
-                    )
-                    return controls
+                    if matches(frame):
+                        return frame, (time.perf_counter() - started) * 1000.0
         except Exception as exc:
             raise TransportError(f"serial read failed on {self.port}: {exc}") from exc
+        return None, (time.perf_counter() - started) * 1000.0
+
+    def poll(self) -> RawControls | None:
+        """Send one poll, then wait for one validated channel response."""
+        self.stats.polls_sent += 1
+        frame, elapsed_ms = self._request(
+            build_poll_command(self._next_sequence()), is_channel_response
+        )
+        if frame is not None:
+            controls = parse_controls(frame)
+            self.stats.controls_received += 1
+            self.stats.last_response_ms = elapsed_ms
+            self._response_time_total += elapsed_ms
+            self.stats.average_response_ms = (
+                self._response_time_total / self.stats.controls_received
+            )
+            return controls
         self.stats.response_timeouts += 1
+        return None
+
+    def poll_buttons(self) -> PhysicalControls | None:
+        """Read the extended RC-N1 buttons and flight-mode switch."""
+        self.stats.button_polls_sent += 1
+        frame, _elapsed_ms = self._request(
+            build_button_poll_command(self._next_sequence()),
+            is_button_response,
+            timeout=min(self.response_timeout, 0.05),
+        )
+        if frame is not None:
+            self.stats.buttons_received += 1
+            return parse_physical_controls(frame)
+        self.stats.button_timeouts += 1
         return None
 
 

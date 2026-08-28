@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from rcn1_bridge.protocol import COMMAND_READ_CHANNELS, build_command
+from rcn1_bridge.model import FlightMode
+from rcn1_bridge.protocol import COMMAND_READ_BUTTONS, COMMAND_READ_CHANNELS, build_command
 from rcn1_bridge.transport import Rcn1Transport
 
 
@@ -13,6 +14,19 @@ def response() -> bytes:
     return build_command(
         COMMAND_READ_CHANNELS,
         sequence=10,
+        payload=bytes(payload),
+        source=6,
+        target=10,
+        command_type=0x80,
+    )
+
+
+def button_response() -> bytes:
+    payload = bytearray(45)
+    payload[17:19] = (0x2002).to_bytes(2, "big")
+    return build_command(
+        COMMAND_READ_BUTTONS,
+        sequence=11,
         payload=bytes(payload),
         source=6,
         target=10,
@@ -33,6 +47,8 @@ class FakeSerial:
         self.writes.append(data)
         if len(data) > 10 and data[10] == COMMAND_READ_CHANNELS:
             self.pending.extend(b"\x00\xff" + response())
+        elif len(data) > 10 and data[10] == COMMAND_READ_BUTTONS:
+            self.pending.extend(button_response())
         return len(data)
 
     def read(self, size: int) -> bytes:
@@ -57,6 +73,16 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(len(fake.writes), 1)
         transport.close()
         self.assertTrue(fake.closed)
+
+    def test_button_poll_produces_extended_controls(self) -> None:
+        fake = FakeSerial()
+        transport = Rcn1Transport("COM1", serial_factory=lambda **_kwargs: fake)
+        transport.open()
+        controls = transport.poll_buttons()
+        self.assertIsNotNone(controls)
+        self.assertTrue(controls.fn)
+        self.assertEqual(controls.mode, FlightMode.CINE)
+        self.assertEqual(transport.stats.buttons_received, 1)
 
 
 if __name__ == "__main__":

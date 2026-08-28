@@ -3,14 +3,18 @@ from __future__ import annotations
 import unittest
 
 from rcn1_bridge.crc import crc8_dji, crc16_dji
+from rcn1_bridge.model import FlightMode
 from rcn1_bridge.protocol import (
+    COMMAND_READ_BUTTONS,
     COMMAND_READ_CHANNELS,
     FrameDecoder,
     ProtocolError,
+    build_button_poll_command,
     build_command,
     build_poll_command,
     build_simulator_mode_command,
     parse_controls,
+    parse_physical_controls,
 )
 
 
@@ -37,6 +41,19 @@ def channel_frame(
     )
 
 
+def button_frame(bits: int) -> bytes:
+    payload = bytearray(45)
+    payload[17:19] = bits.to_bytes(2, "big")
+    return build_command(
+        COMMAND_READ_BUTTONS,
+        sequence=43,
+        payload=bytes(payload),
+        source=0x06,
+        target=0x0A,
+        command_type=0x80,
+    )
+
+
 class CrcTests(unittest.TestCase):
     def test_known_header_crc(self) -> None:
         self.assertEqual(crc8_dji(bytes.fromhex("55 0d 04")), 0x33)
@@ -55,6 +72,9 @@ class CrcTests(unittest.TestCase):
             build_simulator_mode_command(0x34EB),
             bytes.fromhex("55 0e 04 66 0a 06 eb 34 40 06 24 01 d9 ec"),
         )
+
+    def test_button_poll_uses_extended_status_command(self) -> None:
+        self.assertEqual(build_button_poll_command(7)[10], COMMAND_READ_BUTTONS)
 
 
 class FrameTests(unittest.TestCase):
@@ -92,6 +112,24 @@ class FrameTests(unittest.TestCase):
         raw[-1] ^= 0xFF
         with self.assertRaises(ProtocolError):
             DumlFrame.parse(bytes(raw))
+
+    def test_extended_buttons_and_mode(self) -> None:
+        decoder = FrameDecoder()
+        controls = parse_physical_controls(decoder.feed(button_frame(0x2086))[0])
+        self.assertTrue(controls.fn)
+        self.assertTrue(controls.record)
+        self.assertTrue(controls.rth)
+        self.assertEqual(controls.mode, FlightMode.CINE)
+
+    def test_mode_switch_values(self) -> None:
+        decoder = FrameDecoder()
+        for bits, expected in (
+            (0x0000, FlightMode.SPORT),
+            (0x1000, FlightMode.NORMAL),
+            (0x2000, FlightMode.CINE),
+        ):
+            controls = parse_physical_controls(decoder.feed(button_frame(bits))[0])
+            self.assertEqual(controls.mode, expected)
 
 
 if __name__ == "__main__":

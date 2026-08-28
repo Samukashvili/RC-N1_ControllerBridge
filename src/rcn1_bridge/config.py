@@ -6,6 +6,24 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+BUTTON_CHOICES = (
+    "NONE",
+    "A",
+    "B",
+    "X",
+    "Y",
+    "LB",
+    "RB",
+    "BACK",
+    "START",
+    "L3",
+    "R3",
+    "DPAD_UP",
+    "DPAD_DOWN",
+    "DPAD_LEFT",
+    "DPAD_RIGHT",
+)
+
 
 @dataclass(slots=True)
 class AxisCalibration:
@@ -28,29 +46,40 @@ class AxisCalibration:
 def _default_axes() -> dict[str, AxisCalibration]:
     return {
         "left_x": AxisCalibration(),
-        "left_y": AxisCalibration(invert=True),
+        "left_y": AxisCalibration(),
         "right_x": AxisCalibration(),
-        "right_y": AxisCalibration(invert=True),
+        "right_y": AxisCalibration(),
         "camera": AxisCalibration(deadzone=0.08),
     }
 
 
 @dataclass(slots=True)
 class BridgeConfig:
+    schema_version: int = 2
     port: str | None = None
     baud_rate: int = 115200
     reconnect_seconds: float = 1.0
     response_timeout_seconds: float = 0.15
     stale_neutral_seconds: float = 0.25
     camera_button_threshold: float = 0.75
-    camera_left_button: str = "A"
-    camera_right_button: str = "B"
+    camera_left_button: str = "NONE"
+    camera_right_button: str = "NONE"
+    fn_button: str = "NONE"
+    record_button: str = "NONE"
+    photo_button: str = "NONE"
+    rth_button: str = "NONE"
+    mode_sport_button: str = "NONE"
+    mode_normal_button: str = "NONE"
+    mode_cine_button: str = "NONE"
+    button_poll_interval: int = 2
     smoothing: float = 0.0
     suppress_duplicate_reports: bool = True
     probe_unknown_ports: bool = False
     axes: dict[str, AxisCalibration] = field(default_factory=_default_axes)
 
     def validate(self) -> None:
+        if self.schema_version != 2:
+            raise ValueError(f"unsupported config schema {self.schema_version}")
         if not 1200 <= self.baud_rate <= 4_000_000:
             raise ValueError("baud_rate is outside the supported range")
         if not 0.01 <= self.response_timeout_seconds <= 2.0:
@@ -63,6 +92,24 @@ class BridgeConfig:
             raise ValueError("camera_button_threshold must be between 0.1 and 1.0")
         if not 0.0 <= self.smoothing <= 0.95:
             raise ValueError("smoothing must be between 0.0 and 0.95")
+        if not 1 <= self.button_poll_interval <= 20:
+            raise ValueError("button_poll_interval must be between 1 and 20")
+        binding_names = (
+            "camera_left_button",
+            "camera_right_button",
+            "fn_button",
+            "record_button",
+            "photo_button",
+            "rth_button",
+            "mode_sport_button",
+            "mode_normal_button",
+            "mode_cine_button",
+        )
+        for name in binding_names:
+            value = getattr(self, name).upper()
+            if value not in BUTTON_CHOICES:
+                raise ValueError(f"{name} must be one of {', '.join(BUTTON_CHOICES)}")
+            setattr(self, name, value)
         required = {"left_x", "left_y", "right_x", "right_y", "camera"}
         missing = required - self.axes.keys()
         if missing:
@@ -90,6 +137,7 @@ def load_config(path: Path | None = None) -> BridgeConfig:
         raise ValueError(f"could not read config {config_path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("config root must be a JSON object")
+    legacy_schema = "schema_version" not in data
     known = {item.name for item in BridgeConfig.__dataclass_fields__.values()}
     unknown = data.keys() - known
     if unknown:
@@ -106,6 +154,17 @@ def load_config(path: Path | None = None) -> BridgeConfig:
         if unknown_axis:
             raise ValueError(f"{name}: unknown keys {', '.join(sorted(unknown_axis))}")
         axes[name] = AxisCalibration(**values)
+    if legacy_schema:
+        # Version 1 shipped with vertical axes inverted and camera-wheel A/B
+        # bindings. Migrate those defaults to the safer behavior requested by
+        # early hardware testing; every direction remains user-configurable.
+        axes["left_y"].invert = False
+        axes["right_y"].invert = False
+        if data.get("camera_left_button") == "A":
+            data["camera_left_button"] = "NONE"
+        if data.get("camera_right_button") == "B":
+            data["camera_right_button"] = "NONE"
+        data["schema_version"] = 2
     config = BridgeConfig(**data, axes=axes)
     config.validate()
     return config

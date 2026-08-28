@@ -6,7 +6,7 @@ from pathlib import Path
 from tkinter import messagebox, ttk
 
 from .calibration import apply_calibration, capture_calibration
-from .config import BridgeConfig, save_config
+from .config import BUTTON_CHOICES, BridgeConfig, save_config
 from .output import create_output
 from .ports import list_candidates
 from .service import BridgeService, ServiceSnapshot, ServiceState
@@ -28,8 +28,8 @@ class BridgeWindow:
         self.config_path = config_path
         self.root = tk.Tk()
         self.root.title("RC N1 Bridge")
-        self.root.geometry("820x610")
-        self.root.minsize(720, 560)
+        self.root.geometry("820x680")
+        self.root.minsize(720, 650)
         self.root.configure(bg=self.BG)
         self.service: BridgeService | None = None
         self._latest = ServiceSnapshot()
@@ -93,6 +93,8 @@ class BridgeWindow:
         style.configure(
             "TEntry", fieldbackground=self.PANEL_2, foreground=self.TEXT, insertcolor=self.TEXT
         )
+        style.configure("TCheckbutton", background=self.PANEL, foreground=self.TEXT)
+        style.map("TCheckbutton", background=[("active", self.PANEL)])
 
     def _build(self) -> None:
         outer = ttk.Frame(self.root, padding=24)
@@ -161,6 +163,13 @@ class BridgeWindow:
             metrics, text="Response  —", background=self.PANEL_2, foreground=self.MUTED
         )
         self.latency_label.pack(side="right")
+        self.physical_label = ttk.Label(
+            left,
+            text="Mode —  •  Buttons —",
+            style="Muted.TLabel",
+            wraplength=320,
+        )
+        self.physical_label.pack(anchor="w", pady=(12, 0))
 
         ttk.Label(
             right, text="Connection", style="Panel.TLabel", font=("Segoe UI Semibold", 12)
@@ -196,9 +205,16 @@ class BridgeWindow:
             actions, text="Calibrate", style="Secondary.TButton", command=self._start_calibration
         )
         self.calibrate_button.pack(side="right")
+        ttk.Button(
+            right,
+            text="Control mappings",
+            style="Secondary.TButton",
+            command=self._open_mappings,
+        ).pack(fill="x", pady=(10, 0))
         ttk.Label(
             right,
-            text="Camera wheel: A / B  •  Output is neutralized on disconnect",
+            text="Axis directions and every button binding are configurable. "
+            "Output is neutralized on disconnect.",
             style="Muted.TLabel",
             wraplength=300,
         ).pack(anchor="w", pady=(18, 0))
@@ -255,6 +271,105 @@ class BridgeWindow:
         self.status_text.configure(text=f"Settings saved to {path}")
         return True
 
+    def _open_mappings(self) -> None:
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Control mappings")
+        dialog.geometry("520x700")
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.BG)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        outer = ttk.Frame(dialog, padding=22)
+        outer.pack(fill="both", expand=True)
+        ttk.Label(
+            outer, text="Axis directions", style="Title.TLabel", font=("Segoe UI Semibold", 16)
+        ).pack(anchor="w")
+        ttk.Label(
+            outer,
+            text="Toggle only the directions that feel reversed in your simulator.",
+            style="Subtitle.TLabel",
+        ).pack(anchor="w", pady=(2, 10))
+
+        invert_vars: dict[str, tk.BooleanVar] = {}
+        axis_labels = (
+            ("left_x", "Left horizontal"),
+            ("left_y", "Left vertical"),
+            ("right_x", "Right horizontal"),
+            ("right_y", "Right vertical"),
+            ("camera", "Camera wheel"),
+        )
+        axis_panel = ttk.Frame(outer, style="Panel.TFrame", padding=12)
+        axis_panel.pack(fill="x")
+        for name, label in axis_labels:
+            variable = tk.BooleanVar(value=self.config.axes[name].invert)
+            invert_vars[name] = variable
+            ttk.Checkbutton(axis_panel, text=f"Invert {label}", variable=variable).pack(
+                anchor="w", pady=2
+            )
+
+        ttk.Label(
+            outer, text="Xbox button bindings", style="Panel.TLabel", font=("Segoe UI Semibold", 12)
+        ).pack(anchor="w", pady=(18, 2))
+        ttk.Label(
+            outer,
+            text="Disabled is safest until you bind an action inside the game.",
+            style="Subtitle.TLabel",
+        ).pack(anchor="w", pady=(0, 8))
+
+        display_choices = ("Disabled",) + BUTTON_CHOICES[1:]
+        binding_vars: dict[str, tk.StringVar] = {}
+        bindings = (
+            ("camera_left_button", "Camera wheel left"),
+            ("camera_right_button", "Camera wheel right"),
+            ("fn_button", "Fn"),
+            ("record_button", "Record"),
+            ("photo_button", "Photo / shutter"),
+            ("rth_button", "Return to home"),
+            ("mode_cine_button", "Mode: Cine"),
+            ("mode_normal_button", "Mode: Normal"),
+            ("mode_sport_button", "Mode: Sport"),
+        )
+        binding_panel = ttk.Frame(outer, style="Panel.TFrame", padding=12)
+        binding_panel.pack(fill="x")
+        for field, label in bindings:
+            row = ttk.Frame(binding_panel, style="Panel.TFrame")
+            row.pack(fill="x", pady=3)
+            ttk.Label(row, text=label, style="Muted.TLabel").pack(side="left")
+            current = getattr(self.config, field)
+            variable = tk.StringVar(value="Disabled" if current == "NONE" else current)
+            binding_vars[field] = variable
+            ttk.Combobox(
+                row,
+                textvariable=variable,
+                values=display_choices,
+                state="readonly",
+                width=14,
+            ).pack(side="right")
+
+        def save() -> None:
+            for name, variable in invert_vars.items():
+                self.config.axes[name].invert = variable.get()
+            for field, variable in binding_vars.items():
+                value = variable.get()
+                setattr(self.config, field, "NONE" if value == "Disabled" else value)
+            try:
+                path = save_config(self.config, self.config_path)
+            except (ValueError, OSError) as exc:
+                messagebox.showerror("Invalid mappings", str(exc), parent=dialog)
+                return
+            self.status_text.configure(text=f"Mappings saved to {path}")
+            dialog.destroy()
+
+        buttons = ttk.Frame(outer)
+        buttons.pack(fill="x", pady=(16, 0))
+        ttk.Button(buttons, text="Cancel", style="Secondary.TButton", command=dialog.destroy).pack(
+            side="left"
+        )
+        ttk.Button(buttons, text="Save mappings", style="Accent.TButton", command=save).pack(
+            side="right"
+        )
+
     def _toggle(self) -> None:
         if self.service:
             service, self.service = self.service, None
@@ -264,9 +379,7 @@ class BridgeWindow:
         if not self._save_settings():
             return
         try:
-            output = create_output(
-                "xbox", self.config.camera_left_button, self.config.camera_right_button
-            )
+            output = create_output("xbox")
         except (RuntimeError, ValueError) as exc:
             messagebox.showerror("Virtual controller unavailable", str(exc), parent=self.root)
             return
@@ -298,6 +411,26 @@ class BridgeWindow:
         if snapshot.stats:
             self.packet_label.configure(text=f"Packets  {snapshot.stats.controls_received:,}")
             self.latency_label.configure(text=f"Response  {snapshot.stats.last_response_ms:.1f} ms")
+        physical = snapshot.physical
+        active = (
+            ", ".join(
+                name
+                for name, pressed in (
+                    ("Fn", physical.fn),
+                    ("Record", physical.record),
+                    ("Photo", physical.photo),
+                    ("RTH", physical.rth),
+                )
+                if pressed
+            )
+            or "—"
+        )
+        self.physical_label.configure(
+            text=(
+                f"Mode {physical.mode.value}  •  Buttons {active}  •  "
+                f"Raw 0x{physical.raw_bits:04X}"
+            )
+        )
         self.root.after(80, self._render)
 
     def _start_calibration(self) -> None:

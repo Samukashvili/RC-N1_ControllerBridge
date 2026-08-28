@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .crc import crc8_dji, crc16_dji
-from .model import RawControls
+from .model import FlightMode, PhysicalControls, RawControls
 
 SYNC = 0x55
 MIN_FRAME_LENGTH = 13
@@ -15,6 +15,7 @@ TARGET_REMOTE = 0x06
 COMMAND_TYPE_REQUEST = 0x40
 COMMAND_SET_REMOTE = 0x06
 COMMAND_READ_CHANNELS = 0x01
+COMMAND_READ_BUTTONS = 0x27
 COMMAND_SIMULATOR_MODE = 0x24
 
 
@@ -141,6 +142,10 @@ def build_poll_command(sequence: int) -> bytes:
     return build_command(COMMAND_READ_CHANNELS, sequence=sequence)
 
 
+def build_button_poll_command(sequence: int) -> bytes:
+    return build_command(COMMAND_READ_BUTTONS, sequence=sequence)
+
+
 def build_simulator_mode_command(sequence: int, enabled: bool = True) -> bytes:
     return build_command(
         COMMAND_SIMULATOR_MODE,
@@ -151,6 +156,31 @@ def build_simulator_mode_command(sequence: int, enabled: bool = True) -> bytes:
 
 def is_channel_response(frame: DumlFrame) -> bool:
     return frame.command_set == COMMAND_SET_REMOTE and frame.command_id == COMMAND_READ_CHANNELS
+
+
+def is_button_response(frame: DumlFrame) -> bool:
+    return frame.command_set == COMMAND_SET_REMOTE and frame.command_id == COMMAND_READ_BUTTONS
+
+
+def parse_physical_controls(frame: DumlFrame) -> PhysicalControls:
+    """Decode the RC-N1 extended button/status response (command 0x27)."""
+    if len(frame.raw) != 58:
+        raise ProtocolError(f"unsupported RC button frame length {len(frame.raw)}")
+    bits = int.from_bytes(frame.raw[28:30], "big")
+    mode_bits = bits & 0x3000
+    modes = {
+        0x0000: FlightMode.SPORT,
+        0x1000: FlightMode.NORMAL,
+        0x2000: FlightMode.CINE,
+    }
+    return PhysicalControls(
+        raw_bits=bits,
+        fn=bool(bits & 0x0002),
+        record=bool(bits & 0x0004),
+        photo=bool(bits & 0x0060),
+        rth=bool(bits & 0x0080),
+        mode=modes.get(mode_bits, FlightMode.UNKNOWN),
+    )
 
 
 def parse_controls(frame: DumlFrame) -> RawControls:

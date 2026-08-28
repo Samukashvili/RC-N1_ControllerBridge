@@ -1,6 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
+
+
+class FlightMode(str, Enum):
+    SPORT = "Sport"
+    NORMAL = "Normal"
+    CINE = "Cine"
+    UNKNOWN = "Unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,14 +22,23 @@ class RawControls:
 
 
 @dataclass(frozen=True, slots=True)
+class PhysicalControls:
+    raw_bits: int = 0
+    fn: bool = False
+    record: bool = False
+    photo: bool = False
+    rth: bool = False
+    mode: FlightMode = FlightMode.UNKNOWN
+
+
+@dataclass(frozen=True, slots=True)
 class MappedControls:
     left_x: float
     left_y: float
     right_x: float
     right_y: float
     camera: float
-    camera_left: bool = False
-    camera_right: bool = False
+    buttons: frozenset[str] = frozenset()
 
     def neutral(self) -> bool:
         return not any(
@@ -31,10 +48,10 @@ class MappedControls:
                 self.right_x,
                 self.right_y,
                 self.camera,
-                self.camera_left,
-                self.camera_right,
+                bool(self.buttons),
             )
         )
 
 
 NEUTRAL_MAPPED = MappedControls(0.0, 0.0, 0.0, 0.0, 0.0)
+NEUTRAL_PHYSICAL = PhysicalControls()

@@ -80,22 +80,40 @@ class _ConsoleReporter:
     def __init__(self, *, controls: bool) -> None:
         self.controls = controls
         self._last_state: ServiceState | None = None
+        self._last_physical = None
         self._last_print = 0.0
 
     def __call__(self, snapshot: ServiceSnapshot) -> None:
         now = time.monotonic()
         state_changed = snapshot.state != self._last_state
-        if not state_changed and now - self._last_print < 0.5:
+        physical_changed = snapshot.physical != self._last_physical
+        if not state_changed and not physical_changed and now - self._last_print < 0.5:
             return
         self._last_state = snapshot.state
+        self._last_physical = snapshot.physical
         self._last_print = now
         if self.controls and snapshot.raw and snapshot.stats:
             raw = snapshot.raw
             stats = snapshot.stats
+            physical = snapshot.physical
+            active = (
+                ",".join(
+                    name
+                    for name, pressed in (
+                        ("Fn", physical.fn),
+                        ("Record", physical.record),
+                        ("Photo", physical.photo),
+                        ("RTH", physical.rth),
+                    )
+                    if pressed
+                )
+                or "-"
+            )
             print(
                 f"\r{snapshot.state.value:<12} {snapshot.port or '-':<6} "
                 f"LX {raw.left_x:4d} LY {raw.left_y:4d} "
                 f"RX {raw.right_x:4d} RY {raw.right_y:4d} CAM {raw.camera:4d}  "
+                f"MODE {physical.mode.value:<6} BTN {active:<12} RAW {physical.raw_bits:04X} "
                 f"{stats.controls_received:6d} packets  {stats.last_response_ms:5.1f} ms",
                 end="",
                 flush=True,
@@ -106,7 +124,7 @@ class _ConsoleReporter:
 
 def _run_service(config: BridgeConfig, output_kind: str, duration: float | None) -> int:
     try:
-        output = create_output(output_kind, config.camera_left_button, config.camera_right_button)
+        output = create_output(output_kind)
     except (RuntimeError, ValueError) as exc:
         print(f"Output error: {exc}", file=sys.stderr)
         return 2
@@ -134,6 +152,7 @@ def _run_service(config: BridgeConfig, output_kind: str, duration: float | None)
         print(
             f"Validated {stats.controls_received} control packets; "
             f"average response {stats.average_response_ms:.2f} ms; "
+            f"extended status {stats.buttons_received}/{stats.button_polls_sent}; "
             f"CRC/framing failures {stats.invalid_frames}."
         )
         return 0 if stats.controls_received else 1

@@ -50,9 +50,13 @@ class XboxOutput(GamepadOutput):
         "START": "XUSB_GAMEPAD_START",
         "L3": "XUSB_GAMEPAD_LEFT_THUMB",
         "R3": "XUSB_GAMEPAD_RIGHT_THUMB",
+        "DPAD_UP": "XUSB_GAMEPAD_DPAD_UP",
+        "DPAD_DOWN": "XUSB_GAMEPAD_DPAD_DOWN",
+        "DPAD_LEFT": "XUSB_GAMEPAD_DPAD_LEFT",
+        "DPAD_RIGHT": "XUSB_GAMEPAD_DPAD_RIGHT",
     }
 
-    def __init__(self, camera_left_button: str = "A", camera_right_button: str = "B") -> None:
+    def __init__(self) -> None:
         try:
             import vgamepad as vg
         except (ImportError, OSError) as exc:
@@ -63,8 +67,7 @@ class XboxOutput(GamepadOutput):
         self._pad = vg.VX360Gamepad()
         self._lock = threading.Lock()
         self._closed = False
-        self._left_button = self._resolve_button(camera_left_button)
-        self._right_button = self._resolve_button(camera_right_button)
+        self._buttons = {name: self._resolve_button(name) for name in self.BUTTON_NAMES}
         self.neutralize()
 
     def _resolve_button(self, name: str):
@@ -91,14 +94,11 @@ class XboxOutput(GamepadOutput):
             self._pad.right_joystick(
                 x_value=self._axis(controls.right_x), y_value=self._axis(controls.right_y)
             )
-            if controls.camera_left:
-                self._pad.press_button(button=self._left_button)
-            else:
-                self._pad.release_button(button=self._left_button)
-            if controls.camera_right:
-                self._pad.press_button(button=self._right_button)
-            else:
-                self._pad.release_button(button=self._right_button)
+            for name, button in self._buttons.items():
+                if name in controls.buttons:
+                    self._pad.press_button(button=button)
+                else:
+                    self._pad.release_button(button=button)
             self._pad.update()
 
     def neutralize(self) -> None:
@@ -113,9 +113,9 @@ class XboxOutput(GamepadOutput):
             self._closed = True
 
 
-def create_output(kind: str, camera_left_button: str, camera_right_button: str) -> GamepadOutput:
+def create_output(kind: str) -> GamepadOutput:
     if kind == "none":
         return NullOutput()
     if kind == "xbox":
-        return XboxOutput(camera_left_button, camera_right_button)
+        return XboxOutput()
     raise ValueError(f"unsupported output backend {kind!r}")
