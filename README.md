@@ -14,6 +14,9 @@ such as Liftoff, Uncrashed, DRL, DCL, Zephyr, and similar simulators.
 - No busy-spin output thread and no fixed 100 ms/10 Hz delay.
 - Both DUML header CRC and full packet CRC are checked before controls are used.
 - Serial reads time out, disconnects are neutralized, and the bridge reconnects.
+- A short 40 ms retry timeout tolerates the RC-N1's occasional dropped reply
+  pairs without emitting a momentary centered report; sustained loss still
+  neutralizes and reconnects promptly.
 - Port detection is layered rather than tied to one product ID or exact name.
   Known `For Protocol` interfaces rank first, DJI USB identity is only a hint,
   changed-name devices can be protocol-probed, and `For Debug` is excluded.
@@ -127,6 +130,7 @@ Useful settings include:
 - `suppress_duplicate_reports`: avoids redundant XInput reports while sticks are still
 - `camera_button_threshold`: wheel travel required before its mapped button is pressed
 - `button_poll_interval`: number of stick packets between extended-button reads
+- `response_timeout_seconds`: per-poll retry timeout; `0.04` is hardware-tested
 - `*_button` settings: Xbox binding name, or `"NONE"` to disable that input
 - per-axis `minimum`, `center`, `maximum`, `invert`, `deadzone`, and `expo`
 

@@ -55,11 +55,11 @@ def _default_axes() -> dict[str, AxisCalibration]:
 
 @dataclass(slots=True)
 class BridgeConfig:
-    schema_version: int = 2
+    schema_version: int = 3
     port: str | None = None
     baud_rate: int = 115200
     reconnect_seconds: float = 1.0
-    response_timeout_seconds: float = 0.15
+    response_timeout_seconds: float = 0.04
     stale_neutral_seconds: float = 0.25
     camera_button_threshold: float = 0.75
     camera_left_button: str = "NONE"
@@ -78,7 +78,7 @@ class BridgeConfig:
     axes: dict[str, AxisCalibration] = field(default_factory=_default_axes)
 
     def validate(self) -> None:
-        if self.schema_version != 2:
+        if self.schema_version != 3:
             raise ValueError(f"unsupported config schema {self.schema_version}")
         if not 1200 <= self.baud_rate <= 4_000_000:
             raise ValueError("baud_rate is outside the supported range")
@@ -137,7 +137,9 @@ def load_config(path: Path | None = None) -> BridgeConfig:
         raise ValueError(f"could not read config {config_path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ValueError("config root must be a JSON object")
-    legacy_schema = "schema_version" not in data
+    source_schema = data.get("schema_version", 1)
+    if not isinstance(source_schema, int) or source_schema < 1 or source_schema > 3:
+        raise ValueError(f"unsupported config schema {source_schema!r}")
     known = {item.name for item in BridgeConfig.__dataclass_fields__.values()}
     unknown = data.keys() - known
     if unknown:
@@ -154,7 +156,7 @@ def load_config(path: Path | None = None) -> BridgeConfig:
         if unknown_axis:
             raise ValueError(f"{name}: unknown keys {', '.join(sorted(unknown_axis))}")
         axes[name] = AxisCalibration(**values)
-    if legacy_schema:
+    if source_schema == 1:
         # Version 1 shipped with vertical axes inverted and camera-wheel A/B
         # bindings. Migrate those defaults to the safer behavior requested by
         # early hardware testing; every direction remains user-configurable.
@@ -164,7 +166,13 @@ def load_config(path: Path | None = None) -> BridgeConfig:
             data["camera_left_button"] = "NONE"
         if data.get("camera_right_button") == "B":
             data["camera_right_button"] = "NONE"
-        data["schema_version"] = 2
+    if source_schema <= 2:
+        # The original 150 ms retry exposed the game's fail-safe neutral report
+        # when this controller dropped its characteristic pair of replies.
+        # Preserve deliberate custom values while migrating the old default.
+        if data.get("response_timeout_seconds", 0.15) == 0.15:
+            data["response_timeout_seconds"] = 0.04
+        data["schema_version"] = 3
     config = BridgeConfig(**data, axes=axes)
     config.validate()
     return config
