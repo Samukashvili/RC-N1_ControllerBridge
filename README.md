@@ -33,7 +33,8 @@ such as Liftoff, Uncrashed, DRL, DCL, Zephyr, and similar simulators.
 ## Requirements
 
 - Windows 10 or 11, 64-bit
-- Python 3.10 or newer
+- Python 3.10 or newer (the one-click installer can install Python 3.12 with
+  Windows Package Manager when Python is missing)
 - DJI's USB VCOM driver, normally installed by **DJI Assistant 2 (Consumer
   Drones Series)**
 - ViGEmBus for Xbox-controller emulation
@@ -42,28 +43,40 @@ ViGEmBus is retired upstream but remains the backend used by `vgamepad`. Install
 `vgamepad` launches its bundled ViGEmBus installer. Review the driver prompt and
 accept it only if you are comfortable installing that kernel driver.
 
-## Install
+## Easy installation and startup
 
-Open PowerShell in this folder:
+1. Double-click **[install dependencies.bat](install%20dependencies.bat)**.
+2. Allow it to create the local Python environment and install the locked
+   bridge dependencies. If Python is missing, it offers Python 3.12 through
+   Windows Package Manager.
+3. Complete any visible ViGEmBus driver prompt. Windows requires you to approve
+   this virtual-gamepad driver installation manually.
+4. The script downloads DJI Assistant 2 (Consumer Drones Series) from DJI's
+   official CDN, verifies its DJI digital signature, and launches it. Approve
+   the Windows installer prompt and finish that installation manually; it
+   supplies the USB VCOM driver used by the RC-N1.
+5. Close DJI Assistant completely after installation because it can hold the
+   controller's COM port.
+6. Connect the powered-on RC-N1 through the **bottom USB-C port** between the
+   stick storage slots.
+7. Double-click **[run.bat](run.bat)** to open RC N1 Bridge.
+
+The downloaded DJI installer is cached under `%TEMP%\RCN1Bridge`; rerunning the
+dependency installer reuses it only when its Windows signature is still valid.
+
+### Manual PowerShell setup
+
+Advanced users can install only the local bridge dependencies with:
 
 ```powershell
 .\scripts\setup.ps1
 ```
 
-Then connect the powered-on RC-N1 through the **bottom USB-C port** between the
-stick storage slots. Close DJI Assistant completely because it can lock the COM
-port.
-
-Start the desktop app:
+They can then start the desktop interface with `run.bat` or:
 
 ```powershell
 .\scripts\run.ps1
 ```
-
-After setup, you can also double-click `run.bat` in the project folder.
-
-The first setup may display the ViGEmBus installer. Complete it before pressing
-**Start bridge**.
 
 ## Command line
 
@@ -150,9 +163,11 @@ Useful settings include:
 
 ## Safety and privacy
 
-RC N1 Bridge talks only to the selected local serial port and the local virtual
-gamepad driver. It performs no network requests. On a timeout or disconnect it
-immediately sends a neutral virtual-controller report, retries after a bounded
+During normal operation, RC N1 Bridge talks only to the selected local serial
+port and the local virtual gamepad driver; the bridge performs no network
+requests. The separate dependency installer uses HTTPS to obtain Python packages
+and the official DJI installer. On sustained input loss or disconnect, the
+running bridge sends a neutral virtual-controller report, retries after a bounded
 delay, and releases all mapped buttons during shutdown. Firmware that does not
 answer the optional extended-button command automatically falls back to axes-only
 operation for that connection.

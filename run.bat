@@ -6,8 +6,7 @@ cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
     echo RC N1 Bridge is not set up yet.
     echo.
-    echo Run this command in PowerShell first:
-    echo     .\scripts\setup.ps1
+    echo Double-click install dependencies.bat first.
     echo.
     pause
     exit /b 1
@@ -17,8 +16,7 @@ if not exist ".venv\Scripts\python.exe" (
 if errorlevel 1 (
     echo RC N1 Bridge needs its local Python environment repaired.
     echo.
-    echo Run this command in PowerShell:
-    echo     .\scripts\setup.ps1
+    echo Double-click install dependencies.bat to repair it.
     echo.
     pause
     exit /b 1
