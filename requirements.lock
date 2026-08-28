@@ -1,0 +1,6 @@
+# Runtime artifacts pinned to reviewed versions. Hashes are from PyPI.
+pyserial==3.5 \
+    --hash=sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0
+vgamepad==0.1.0 \
+    --hash=sha256:57f6bd01aec0c172947517fb782d150ef9b285f7f4d524c317374fa5c24a89de
+
