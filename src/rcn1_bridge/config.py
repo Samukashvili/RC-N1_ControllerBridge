@@ -72,6 +72,8 @@ class BridgeConfig:
     mode_normal_button: str = "NONE"
     mode_cine_button: str = "NONE"
     button_poll_interval: int = 2
+    anti_deadzone_enabled: bool = False
+    anti_deadzone: float = 0.25
     smoothing: float = 0.0
     suppress_duplicate_reports: bool = True
     probe_unknown_ports: bool = False
@@ -92,6 +94,10 @@ class BridgeConfig:
             raise ValueError("camera_button_threshold must be between 0.1 and 1.0")
         if not 0.0 <= self.smoothing <= 0.95:
             raise ValueError("smoothing must be between 0.0 and 0.95")
+        if not isinstance(self.anti_deadzone_enabled, bool):
+            raise ValueError("anti_deadzone_enabled must be true or false")
+        if not 0.0 <= self.anti_deadzone < 0.5:
+            raise ValueError("anti_deadzone must be between 0.0 and 0.5")
         if not 1 <= self.button_poll_interval <= 20:
             raise ValueError("button_poll_interval must be between 1 and 20")
         binding_names = (

@@ -28,8 +28,8 @@ class BridgeWindow:
         self.config_path = config_path
         self.root = tk.Tk()
         self.root.title("RC N1 Bridge")
-        self.root.geometry("820x680")
-        self.root.minsize(720, 650)
+        self.root.geometry("820x740")
+        self.root.minsize(720, 710)
         self.root.configure(bg=self.BG)
         self.service: BridgeService | None = None
         self._latest = ServiceSnapshot()
@@ -192,9 +192,26 @@ class BridgeWindow:
         self.deadzone_var = tk.StringVar(value=f"{self.config.axes['left_x'].deadzone:.3f}")
         self.expo_var = tk.StringVar(value=f"{self.config.axes['left_x'].expo:.3f}")
         self.smoothing_var = tk.StringVar(value=f"{self.config.smoothing:.3f}")
+        self.anti_deadzone_enabled_var = tk.BooleanVar(
+            value=self.config.anti_deadzone_enabled
+        )
+        self.anti_deadzone_var = tk.StringVar(value=f"{self.config.anti_deadzone:.3f}")
         self._setting_row(settings, "Dead zone", self.deadzone_var)
         self._setting_row(settings, "Expo", self.expo_var)
         self._setting_row(settings, "Smoothing", self.smoothing_var)
+        anti_row = ttk.Frame(settings, style="Panel.TFrame")
+        anti_row.pack(fill="x", pady=4)
+        ttk.Checkbutton(
+            anti_row,
+            text="Enable anti-deadzone",
+            variable=self.anti_deadzone_enabled_var,
+        ).pack(side="left")
+        ttk.Entry(
+            anti_row,
+            textvariable=self.anti_deadzone_var,
+            width=8,
+            justify="right",
+        ).pack(side="right")
 
         actions = ttk.Frame(right, style="Panel.TFrame")
         actions.pack(fill="x", pady=(22, 0))
@@ -214,6 +231,7 @@ class BridgeWindow:
         ttk.Label(
             right,
             text="Axis directions and every button binding are configurable. "
+            "Anti-deadzone values around 0.25–0.26 compensate for large game deadzones. "
             "Output is neutralized on disconnect.",
             style="Muted.TLabel",
             wraplength=300,
@@ -254,10 +272,13 @@ class BridgeWindow:
         deadzone = float(self.deadzone_var.get())
         expo = float(self.expo_var.get())
         smoothing = float(self.smoothing_var.get())
+        anti_deadzone = float(self.anti_deadzone_var.get())
         for name in ("left_x", "left_y", "right_x", "right_y"):
             self.config.axes[name].deadzone = deadzone
             self.config.axes[name].expo = expo
         self.config.smoothing = smoothing
+        self.config.anti_deadzone_enabled = self.anti_deadzone_enabled_var.get()
+        self.config.anti_deadzone = anti_deadzone
         self.config.port = self._port_by_label.get(self.port_var.get())
         self.config.validate()
 

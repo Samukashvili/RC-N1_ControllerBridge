@@ -26,6 +26,14 @@ def map_axis(raw: int, calibration: AxisCalibration) -> float:
     return math.copysign(max(0.0, min(1.0, curved)), value)
 
 
+def apply_anti_deadzone(value: float, minimum_output: float) -> float:
+    """Map nonzero input onto [minimum_output, 1] without changing its sign."""
+    if value == 0.0 or minimum_output == 0.0:
+        return value
+    magnitude = minimum_output + (1.0 - minimum_output) * abs(value)
+    return math.copysign(min(1.0, magnitude), value)
+
+
 class ControlMapper:
     def __init__(self, config: BridgeConfig) -> None:
         self.config = config
@@ -55,6 +63,16 @@ class ControlMapper:
                 right_y=self._previous.right_y * old_weight + current.right_y * new_weight,
                 camera=self._previous.camera * old_weight + current.camera * new_weight,
             )
+        self._previous = current
+        if self.config.anti_deadzone_enabled:
+            minimum = self.config.anti_deadzone
+            current = MappedControls(
+                left_x=apply_anti_deadzone(current.left_x, minimum),
+                left_y=apply_anti_deadzone(current.left_y, minimum),
+                right_x=apply_anti_deadzone(current.right_x, minimum),
+                right_y=apply_anti_deadzone(current.right_y, minimum),
+                camera=current.camera,
+            )
         threshold = self.config.camera_button_threshold
         buttons: set[str] = set()
 
@@ -79,5 +97,4 @@ class ControlMapper:
             camera=current.camera,
             buttons=frozenset(buttons),
         )
-        self._previous = current
         return current

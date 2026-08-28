@@ -24,6 +24,8 @@ such as Liftoff, Uncrashed, DRL, DCL, Zephyr, and similar simulators.
   expo, per-axis inversion, optional smoothing, and configurable button output.
 - Fn, record, photo/shutter, return-to-home, the Cine/Normal/Sport switch, and
   both camera-wheel directions can each be mapped to an Xbox button or disabled.
+- Optional anti-deadzone compensation remaps nonzero stick travel above a
+  game's unavoidable inner deadzone while preserving proportional full range.
 - Dependencies are small and pinned. There is no telemetry, networking,
   persistence service, shell execution, or background updater.
 - A diagnostics mode can validate the controller without creating a virtual pad.
@@ -109,6 +111,16 @@ mappings** to assign any input to A/B/X/Y, shoulder buttons, stick clicks,
 Start/Back, or a D-pad direction. The same Xbox button may be assigned to more
 than one RC input safely.
 
+If a game ignores the first part of Xbox stick travel and offers no deadzone
+setting, enable **Anti-deadzone** under **Input tuning**. Start with `0.25`; use
+`0.26` if the game still ignores the boundary. Zero remains exactly centered,
+while every nonzero stick value is remapped smoothly from that minimum output to
+full scale. The setting applies to both sticks, not the camera wheel, and is
+disabled by default because games without a forced deadzone do not need it. If
+the controller jitters by a count around center, pair anti-deadzone with a small
+bridge dead zone such as `0.01` or `0.02` so that noise does not jump to the
+minimum output.
+
 The RC-N1 throttle stick springs to center, unlike a typical FPV radio. Most
 simulators can still calibrate it, but the feel will differ from a non-centering
 FPV throttle gimbal.
@@ -131,6 +143,8 @@ Useful settings include:
 - `camera_button_threshold`: wheel travel required before its mapped button is pressed
 - `button_poll_interval`: number of stick packets between extended-button reads
 - `response_timeout_seconds`: per-poll retry timeout; `0.04` is hardware-tested
+- `anti_deadzone_enabled`: enables minimum-output compensation for both sticks
+- `anti_deadzone`: minimum nonzero output, usually `0.25` or `0.26`
 - `*_button` settings: Xbox binding name, or `"NONE"` to disable that input
 - per-axis `minimum`, `center`, `maximum`, `invert`, `deadzone`, and `expo`
 
